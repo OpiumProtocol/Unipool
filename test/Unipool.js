@@ -3,7 +3,7 @@ const { expect } = require('chai');
 
 const Uni = artifacts.require('UniMock');
 const Snx = artifacts.require('SnxMock');
-const Unipool = artifacts.require('UnipoolMock');
+const Unipool = artifacts.require('Unipool');
 
 async function timeIncreaseTo (seconds) {
     const delay = 10 - new Date().getMilliseconds();
@@ -45,7 +45,7 @@ contract('Unipool', function ([_, wallet1, wallet2, wallet3, wallet4]) {
         beforeEach(async function () {
             this.uni = await Uni.new();
             this.snx = await Snx.new();
-            this.pool = await Unipool.new(this.uni.address, this.snx.address);
+            this.pool = await Unipool.new(this.snx.address, this.uni.address);
 
             await this.pool.setRewardDistribution(wallet1);
 

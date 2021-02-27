@@ -525,6 +525,62 @@ library SafeERC20 {
     }
 }
 
+// File: @openzeppelin/contracts/token/ERC20/ERC20Detailed.sol
+
+pragma solidity ^0.5.0;
+
+
+/**
+ * @dev Optional functions from the ERC20 standard.
+ */
+contract ERC20Detailed is IERC20 {
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+
+    /**
+     * @dev Sets the values for `name`, `symbol`, and `decimals`. All three of
+     * these values are immutable: they can only be set once during
+     * construction.
+     */
+    constructor (string memory name, string memory symbol, uint8 decimals) public {
+        _name = name;
+        _symbol = symbol;
+        _decimals = decimals;
+    }
+
+    /**
+     * @dev Returns the name of the token.
+     */
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    /**
+     * @dev Returns the symbol of the token, usually a shorter version of the
+     * name.
+     */
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    /**
+     * @dev Returns the number of decimals used to get its user representation.
+     * For example, if `decimals` equals `2`, a balance of `505` tokens should
+     * be displayed to a user as `5,05` (`505 / 10 ** 2`).
+     *
+     * Tokens usually opt for a value of 18, imitating the relationship between
+     * Ether and Wei.
+     *
+     * NOTE: This information is only used for _display_ purposes: it in
+     * no way affects any of the arithmetic of the contract, including
+     * {IERC20-balanceOf} and {IERC20-transfer}.
+     */
+    function decimals() public view returns (uint8) {
+        return _decimals;
+    }
+}
+
 // File: contracts/IRewardDistributionRecipient.sol
 
 pragma solidity ^0.5.0;
@@ -532,7 +588,7 @@ pragma solidity ^0.5.0;
 
 
 contract IRewardDistributionRecipient is Ownable {
-    address rewardDistribution;
+    address public rewardDistribution;
 
     function notifyRewardAmount(uint256 reward) external;
 
@@ -558,14 +614,22 @@ pragma solidity ^0.5.0;
 
 
 
+
 contract LPTokenWrapper {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
+    using SafeERC20 for ERC20Detailed;
 
-    IERC20 public uni = IERC20(0xe9Cf7887b93150D4F2Da7dFc6D502B216438F244);
+    ERC20Detailed public underlying;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    constructor(ERC20Detailed _underlying) public {
+        underlying = _underlying;
+    }
 
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
@@ -578,18 +642,20 @@ contract LPTokenWrapper {
     function stake(uint256 amount) public {
         _totalSupply = _totalSupply.add(amount);
         _balances[msg.sender] = _balances[msg.sender].add(amount);
-        uni.safeTransferFrom(msg.sender, address(this), amount);
+        underlying.safeTransferFrom(msg.sender, address(this), amount);
+        emit Transfer(address(0), msg.sender, amount);
     }
 
     function withdraw(uint256 amount) public {
         _totalSupply = _totalSupply.sub(amount);
         _balances[msg.sender] = _balances[msg.sender].sub(amount);
-        uni.safeTransfer(msg.sender, amount);
+        underlying.safeTransfer(msg.sender, amount);
+        emit Transfer(msg.sender, address(0), amount);
     }
 }
 
 contract Unipool is LPTokenWrapper, IRewardDistributionRecipient {
-    IERC20 public snx = IERC20(0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F);
+    IERC20 public gift;
     uint256 public constant DURATION = 7 days;
 
     uint256 public periodFinish = 0;
@@ -603,6 +669,22 @@ contract Unipool is LPTokenWrapper, IRewardDistributionRecipient {
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
+
+    constructor(IERC20 _gift, ERC20Detailed _underlying) public LPTokenWrapper(_underlying) {
+        gift = _gift;
+    }
+
+    function name() external view returns(string memory) {
+        return string(abi.encodePacked("Farming: ", underlying.name()));
+    }
+
+    function symbol() external view returns(string memory) {
+        return string(abi.encodePacked("farm-", underlying.symbol()));
+    }
+
+    function decimals() external view returns(uint8) {
+        return underlying.decimals();
+    }
 
     modifier updateReward(address account) {
         rewardPerTokenStored = rewardPerToken();
@@ -662,7 +744,7 @@ contract Unipool is LPTokenWrapper, IRewardDistributionRecipient {
         uint256 reward = earned(msg.sender);
         if (reward > 0) {
             rewards[msg.sender] = 0;
-            snx.safeTransfer(msg.sender, reward);
+            gift.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
         }
     }
